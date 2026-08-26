@@ -83,7 +83,7 @@ export const loader = async ({ request }) => {
         order(id: $id) {
           id
           name
-          financialStatus
+          displayFinancialStatus
           paymentGatewayNames
         }
       }`,
@@ -99,7 +99,7 @@ export const loader = async ({ request }) => {
       return json({ error: "Order not found on Shopify" }, { status: 404 });
     }
 
-    const isPaid = order.financialStatus === "PAID";
+    const isPaid = order.displayFinancialStatus === "PAID";
     
     // If already paid, don't show the payment button
     if (isPaid) {

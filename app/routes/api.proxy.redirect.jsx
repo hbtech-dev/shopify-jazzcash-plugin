@@ -83,7 +83,7 @@ export const loader = async ({ request }) => {
             nodes {
               id
               name
-              financialStatus
+              displayFinancialStatus
               paymentGatewayNames
             }
           }
@@ -99,7 +99,7 @@ export const loader = async ({ request }) => {
       resolvedOrderId = foundOrder.id;
 
       // Check if already paid
-      if (foundOrder.financialStatus === "PAID") {
+      if (foundOrder.displayFinancialStatus === "PAID") {
         return json({ shouldRedirect: false, reason: "already_paid" });
       }
 

@@ -60,6 +60,7 @@ export const loader = async ({ request }) => {
     });
 
     let order = null;
+    let nodes = [];
     const cleanId = orderId
       .replace("gid://shopify/OrderIdentity/", "")
       .replace("gid://shopify/Order/", "");
@@ -72,7 +73,8 @@ export const loader = async ({ request }) => {
           order(id: $id) {
             id
             name
-            financialStatus
+            displayFinancialStatus
+            fullyPaid
             email
             phone
             totalPriceSet {
@@ -108,7 +110,8 @@ export const loader = async ({ request }) => {
               nodes {
                 id
                 name
-                financialStatus
+                displayFinancialStatus
+                fullyPaid
                 email
                 phone
                 totalPriceSet {
@@ -126,10 +129,10 @@ export const loader = async ({ request }) => {
           }`
         );
 
-        const nodes = searchRes.data?.orders?.nodes || [];
+        nodes = searchRes.data?.orders?.nodes || [];
         // Match by exact/partial ID or pick the latest unpaid order
         order = nodes.find((n) => n.id.includes(cleanId)) ||
-                nodes.find((n) => n.financialStatus !== "PAID") ||
+                nodes.find((n) => n.displayFinancialStatus !== "PAID" && !n.fullyPaid) ||
                 nodes[0];
       } catch (e) {
         console.error("Recent orders search fallback failed:", e.message);
@@ -140,7 +143,9 @@ export const loader = async ({ request }) => {
       return json({ error: "Order not found on Shopify", details: `Target ID: ${cleanId} | Total store orders found: ${nodes.length}` }, { status: 404 });
     }
 
-    if (order.financialStatus === "PAID") {
+    const isPaid = order.fullyPaid || order.displayFinancialStatus === "PAID";
+
+    if (isPaid) {
       return json({ error: "This order has already been paid.", paid: true }, { status: 400 });
     }
 
