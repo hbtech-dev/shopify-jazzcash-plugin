@@ -150,7 +150,25 @@ export default function Index() {
             </ol>
           </s-list-item>
           <s-list-item style={{ marginTop: '8px' }}>
-            View live revenue & transactions on your gateway ledger at <strong>https://api.ultradigital.cc/test/123</strong>.
+            <strong>Enable Thank You Page Payment Box:</strong><br/>
+            <a 
+              href={`https://admin.shopify.com/store/${shop.replace('.myshopify.com','')}/settings/checkout/editor?page=thank_you`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'inline-block',
+                marginTop: '6px',
+                padding: '8px 14px',
+                backgroundColor: '#008060',
+                color: '#fff',
+                textDecoration: 'none',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 'bold'
+              }}
+            >
+              🚀 Open Thank You Page Editor
+            </a>
           </s-list-item>
         </s-unordered-list>
       </s-section>
