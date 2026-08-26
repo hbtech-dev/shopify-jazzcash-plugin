@@ -81,7 +81,9 @@ export const loader = async ({ request }) => {
       }`,
       {
         variables: {
-          id: orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`,
+          id: orderId
+            .replace("gid://shopify/OrderIdentity/", "gid://shopify/Order/")
+            .replace(/^(\d+)$/, "gid://shopify/Order/$1"), // plain numeric ID fallback
         },
       }
     );
