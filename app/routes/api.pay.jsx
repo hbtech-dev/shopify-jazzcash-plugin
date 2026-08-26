@@ -59,39 +59,85 @@ export const loader = async ({ request }) => {
       },
     });
 
-    const response = await client.request(
-      `#graphql
-      query getOrderDetails($id: ID!) {
-        order(id: $id) {
-          id
-          name
-          financialStatus
-          email
-          phone
-          totalPriceSet {
-            shopMoney {
-              amount
-              currencyCode
+    let order = null;
+    const cleanId = orderId
+      .replace("gid://shopify/OrderIdentity/", "")
+      .replace("gid://shopify/Order/", "");
+
+    // Attempt 1: Direct lookup with normalized GID
+    try {
+      const response = await client.request(
+        `#graphql
+        query getOrderDetails($id: ID!) {
+          order(id: $id) {
+            id
+            name
+            financialStatus
+            email
+            phone
+            totalPriceSet {
+              shopMoney {
+                amount
+                currencyCode
+              }
+            }
+            customer {
+              phone
+              email
             }
           }
-          customer {
-            phone
-            email
-          }
+        }`,
+        {
+          variables: {
+            id: `gid://shopify/Order/${cleanId}`,
+          },
         }
-      }`,
-      {
-        variables: {
-          id: orderId
-            .replace("gid://shopify/OrderIdentity/", "gid://shopify/Order/")
-            .replace(/^(\d+)$/, "gid://shopify/Order/$1"), // plain numeric ID fallback
-        },
-      }
-    );
+      );
+      order = response.data?.order;
+    } catch (e) {
+      console.warn("Direct order GID query failed, falling back to search:", e.message);
+    }
 
-    const order = response.data?.order;
+    // Attempt 2: Search recent orders if direct ID lookup yielded null
     if (!order) {
-      return json({ error: "Order not found on Shopify" }, { status: 404 });
+      try {
+        const searchRes = await client.request(
+          `#graphql
+          query findRecentOrders {
+            orders(first: 10, sortKey: CREATED_AT, reverse: true) {
+              nodes {
+                id
+                name
+                financialStatus
+                email
+                phone
+                totalPriceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
+                customer {
+                  phone
+                  email
+                }
+              }
+            }
+          }`
+        );
+
+        const nodes = searchRes.data?.orders?.nodes || [];
+        // Match by exact/partial ID or pick the latest unpaid order
+        order = nodes.find((n) => n.id.includes(cleanId)) ||
+                nodes.find((n) => n.financialStatus !== "PAID") ||
+                nodes[0];
+      } catch (e) {
+        console.error("Recent orders search fallback failed:", e.message);
+      }
+    }
+
+    if (!order) {
+      return json({ error: "Order not found on Shopify", details: `Target ID: ${cleanId}` }, { status: 404 });
     }
 
     if (order.financialStatus === "PAID") {
@@ -193,7 +239,12 @@ export default function Pay() {
     return (
       <div style={{ fontFamily: "system-ui, sans-serif", padding: "40px", textAlign: "center", color: "#ef4444", backgroundColor: "#090d16", minHeight: "100vh" }}>
         <h2>Payment Error</h2>
-        <p>{initialData.error}</p>
+        <p style={{ fontSize: "16px", color: "#f87171" }}>{initialData.error}</p>
+        {initialData.details && (
+          <p style={{ fontSize: "13px", color: "#9ca3af", marginTop: "10px", fontFamily: "monospace" }}>
+            {initialData.details}
+          </p>
+        )}
       </div>
     );
   }
