@@ -1,106 +1,149 @@
 /**
- * JazzCash Thank You Page Extension
+ * JazzCash Thank You Page Extension - jaazcash-9
  *
- * Uses @shopify/ui-extensions/checkout extension() API.
- * The `api` object provides order + shop data directly.
- * Shows a prominent "Pay Now" button that navigates to our payment page.
+ * FIXED: Always renders something immediately.
+ * Never returns early without showing UI.
  */
 
-import { extension, Banner, BlockStack, Button, Text } from "@shopify/ui-extensions/checkout";
+import {
+  extension,
+  Banner,
+  BlockStack,
+  Button,
+  Text,
+} from "@shopify/ui-extensions/checkout";
 
-const APP_URL = "https://shopify-jazzcash-plugin-production.up.railway.app";
+const APP_URL =
+  "https://shopify-jazzcash-plugin-production.up.railway.app";
 
+// ── Main Target ──────────────────────────────────────────────────────────────
 export default extension(
   "purchase.thank-you.block.render",
-  async (root, api) => {
-    await renderJazzCashPayment(root, api);
+  (root, api) => {
+    run(root, api);
   }
 );
 
+// ── Order Status Target ───────────────────────────────────────────────────────
 export const orderStatusExtension = extension(
   "customer-account.order-status.block.render",
-  async (root, api) => {
-    await renderJazzCashPayment(root, api);
+  (root, api) => {
+    run(root, api);
   }
 );
 
-async function renderJazzCashPayment(root, api) {
-  // Get order and shop from the api object
-  const order = api.orderConfirmation?.current;
-  const shopDomain =
-    api.shop?.myshopifyDomain?.current ||
-    api.shop?.myshopifyDomain ||
-    "";
+// ── Core Logic ────────────────────────────────────────────────────────────────
+function run(root, api) {
+  // Step 1: ALWAYS show loading banner immediately so something is visible
+  showLoading(root);
 
-  // If no order data yet, subscribe to changes
-  if (!order) {
-    // Try subscribing to orderConfirmation
-    if (api.orderConfirmation?.subscribe) {
-      api.orderConfirmation.subscribe((newOrder) => {
-        if (newOrder) {
-          renderPaymentUI(root, api, newOrder, shopDomain);
+  // Step 2: Get shop domain (plain string in this API)
+  const shopDomain =
+    (typeof api.shop?.myshopifyDomain === "string"
+      ? api.shop.myshopifyDomain
+      : null) || "";
+
+  // Step 3: Try to render from current value
+  try {
+    const current = api.orderConfirmation?.current;
+    if (current) {
+      renderFromOrder(root, current, shopDomain);
+      return;
+    }
+  } catch (e) {
+    // keep loading banner, try subscription below
+  }
+
+  // Step 4: Subscribe for when order data becomes available
+  try {
+    if (typeof api.orderConfirmation?.subscribe === "function") {
+      api.orderConfirmation.subscribe((orderData) => {
+        try {
+          renderFromOrder(root, orderData, shopDomain);
+        } catch (e) {
+          showPayButton(root, "", shopDomain);
         }
       });
+    } else {
+      // No subscription API — show generic pay button
+      showPayButton(root, "", shopDomain);
     }
+  } catch (e) {
+    showPayButton(root, "", shopDomain);
+  }
+}
+
+function renderFromOrder(root, orderData, shopDomain) {
+  if (!orderData) return;
+
+  // Handle both wrapped { order: {...} } and flat formats
+  const order = orderData.order || orderData;
+  const orderId = order.id || order.gid || "";
+  const financialStatus = (order.financialStatus || "").toUpperCase();
+
+  if (financialStatus === "PAID") {
+    // Already paid — show success
+    root.clear();
+    root.appendChild(
+      root.createComponent(
+        Banner,
+        { title: "✅ Payment Complete", tone: "success" },
+        [
+          root.createComponent(BlockStack, {}, [
+            root.createComponent(
+              Text,
+              {},
+              "Your JazzCash payment has been received. Thank you!"
+            ),
+          ]),
+        ]
+      )
+    );
     return;
   }
 
-  renderPaymentUI(root, api, order, shopDomain);
+  showPayButton(root, orderId, shopDomain);
 }
 
-function renderPaymentUI(root, api, order, shopDomain) {
-  const orderId = order?.order?.id || order?.id || "";
-  const financialStatus =
-    order?.order?.financialStatus || order?.financialStatus || "";
-
-  // Clear any existing content
+function showLoading(root) {
   root.clear();
-
-  // Already paid — show success
-  if (financialStatus === "PAID" || financialStatus === "paid") {
-    root.appendChild(
-      root.createComponent(Banner, { title: "Payment Verified ✅", tone: "success" }, [
+  root.appendChild(
+    root.createComponent(
+      Banner,
+      { title: "JazzCash Mobile Wallet", tone: "info" },
+      [
         root.createComponent(BlockStack, {}, [
           root.createComponent(
             Text,
             {},
-            "Your JazzCash payment has been received. Thank you!"
+            "Loading your JazzCash payment details..."
           ),
         ]),
-      ])
-    );
-    return;
-  }
+      ]
+    )
+  );
+}
 
-  if (!orderId || !shopDomain) {
-    // No data available — show a generic loading message
-    root.appendChild(
-      root.createComponent(Banner, { title: "JazzCash Mobile Wallet", tone: "info" }, [
-        root.createComponent(BlockStack, {}, [
-          root.createComponent(Text, {}, "Loading payment details..."),
-        ]),
-      ])
-    );
-    return;
-  }
+function showPayButton(root, orderId, shopDomain) {
+  root.clear();
 
-  // Build payment URL
-  const payUrl =
-    `${APP_URL}/api/pay` +
-    `?order_id=${encodeURIComponent(orderId)}` +
-    `&shop=${encodeURIComponent(shopDomain)}`;
+  // Build pay URL — works even without orderId (user can still reach our page)
+  let payUrl = APP_URL + "/api/pay";
+  const params = [];
+  if (orderId) params.push("order_id=" + encodeURIComponent(orderId));
+  if (shopDomain) params.push("shop=" + encodeURIComponent(shopDomain));
+  if (params.length) payUrl += "?" + params.join("&");
 
-  // Show prominent payment banner with button
   root.appendChild(
     root.createComponent(
       Banner,
       { title: "⚠️ Complete Your JazzCash Payment", tone: "critical" },
       [
-        root.createComponent(BlockStack, { spacing: "loose" }, [
+        root.createComponent(BlockStack, {}, [
           root.createComponent(
             Text,
             {},
-            "Your order is placed but payment is not yet complete. Please tap the button below to pay via JazzCash Mobile Wallet."
+            "Your order is placed but payment is not yet complete. Tap below to pay via JazzCash Mobile Wallet."
           ),
           root.createComponent(
             Button,
@@ -109,8 +152,8 @@ function renderPaymentUI(root, api, order, shopDomain) {
           ),
           root.createComponent(
             Text,
-            { size: "small", appearance: "subdued" },
-            "Securely redirected to Ultra Digital Connect payment gateway."
+            { appearance: "subdued" },
+            "Secured by Ultra Digital Connect Gateway"
           ),
         ]),
       ]
