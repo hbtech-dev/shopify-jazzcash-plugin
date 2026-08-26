@@ -46,8 +46,9 @@ export const loader = async ({ request }) => {
     const shopify = new shopifyApi({
       apiKey: process.env.SHOPIFY_API_KEY,
       apiSecretKey: process.env.SHOPIFY_API_SECRET,
-      apiVersion: ApiVersion.July26,
+      apiVersion: ApiVersion.July25,
       scopes: process.env.SCOPES?.split(","),
+      hostName: (process.env.SHOPIFY_APP_URL || "shopify-jazzcash-plugin-production.up.railway.app").replace(/^https?:\/\//, ""),
       isEmbeddedApp: true,
     });
 
