@@ -1,7 +1,6 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
 const json = (data, init) => Response.json(data, init);
 import prisma from "../db.server";
-// Central Gateway Payment Proxy Endpoint for Shopify Checkout
 import { shopifyApi, ApiVersion } from "@shopify/shopify-api";
 
 // Helper to format Pakistani mobile number to 11 digits (e.g., 03001234567)
@@ -25,22 +24,22 @@ const sanitizeStoreName = (name) => {
 export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const orderId = url.searchParams.get("order_id");
-  const shop = url.searchParams.get("shop");
+  const shop = url.searchParams.get("shop") || url.hostname;
 
-  if (!orderId || !shop) {
-    return json({ error: "Missing order_id or shop parameter" }, { status: 400 });
+  if (!orderId) {
+    return json({ error: "Missing order_id parameter" }, { status: 400 });
   }
 
   try {
     const session = await prisma.session.findFirst({
       where: {
-        shop,
         isOnline: false,
+        ...(shop ? { shop } : {}),
       },
     });
 
     if (!session) {
-      return json({ error: "Shopify session not found. Please re-authenticate the app." }, { status: 404 });
+      return json({ error: "Store connection session not found. Please re-authenticate." }, { status: 404 });
     }
 
     // Query order details from Shopify Admin GraphQL API
@@ -82,7 +81,7 @@ export const loader = async ({ request }) => {
       }`,
       {
         variables: {
-          id: orderId,
+          id: orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`,
         },
       }
     );
@@ -93,13 +92,45 @@ export const loader = async ({ request }) => {
     }
 
     if (order.financialStatus === "PAID") {
-      return json({ error: "This order has already been paid." }, { status: 400 });
+      return json({ error: "This order has already been paid.", paid: true }, { status: 400 });
     }
 
     const amountPKR = parseFloat(order.totalPriceSet.shopMoney.amount);
     const customerPhone = formatPhoneNumber(order.phone || order.customer?.phone || "");
-    const storeCode = sanitizeStoreName(shop);
-    const billRef = order.name;
+    const storeCode = sanitizeStoreName(session.shop);
+
+    return {
+      orderId: order.id,
+      orderName: order.name,
+      amountPKR: amountPKR,
+      customerPhone: customerPhone,
+      storeName: storeCode,
+      shop: session.shop,
+    };
+  } catch (error) {
+    console.error("Shopify Order Details Error:", error);
+    return json({ error: "Failed to load order details", details: error.message }, { status: 500 });
+  }
+};
+
+export const action = async ({ request }) => {
+  const formData = await request.formData();
+  const orderId = formData.get("orderId");
+  const shop = formData.get("shop");
+  const mobileNo = formatPhoneNumber(formData.get("mobileNo") || "");
+
+  if (!mobileNo || mobileNo.length !== 11) {
+    return json({ error: "Please enter a valid 11-digit JazzCash mobile number (e.g. 03001234567)" }, { status: 400 });
+  }
+
+  try {
+    const session = await prisma.session.findFirst({
+      where: { isOnline: false, ...(shop ? { shop } : {}) },
+    });
+
+    const storeCode = sanitizeStoreName(session?.shop || shop);
+    const amountPKR = parseFloat(formData.get("amountPKR") || "0");
+    const orderName = formData.get("orderName") || "Order";
 
     // FORWARD TO CENTRAL GATEWAY API (api.ultradigital.cc)
     const gatewayUrl = "https://api.ultradigital.cc/api/payment";
@@ -107,9 +138,9 @@ export const loader = async ({ request }) => {
     const gatewayPayload = {
       subMerchantName: storeCode,
       amountPKR: amountPKR,
-      mobileNo: customerPhone,
-      billRef: billRef,
-      description: `Shopify Order ${order.name} at ${storeCode}`,
+      mobileNo: mobileNo,
+      billRef: orderName,
+      description: `Shopify Order ${orderName} at ${storeCode}`,
       returnUrl: `https://api.ultradigital.cc/api/result`
     };
 
@@ -121,7 +152,7 @@ export const loader = async ({ request }) => {
 
     const gatewayData = await gatewayRes.json();
 
-    // Save transaction mapping to local DB
+    // Log transaction to local DB
     if (gatewayData.txnRefNo) {
       try {
         await prisma.jazzCashTransaction.create({
@@ -133,39 +164,42 @@ export const loader = async ({ request }) => {
           },
         });
       } catch (e) {
-        console.error("Local Prisma transaction log error:", e);
+        console.error("Prisma log error:", e);
       }
     }
 
     return {
-      orderName: order.name,
+      success: true,
+      orderName: orderName,
       amountPKR: amountPKR,
       storeName: storeCode,
+      mobileNo: mobileNo,
       gatewayResponse: gatewayData,
     };
-
-  } catch (error) {
-    console.error("Shopify Gateway Proxy Error:", error);
-    return json({ error: "Failed to initiate payment through gateway", details: error.message }, { status: 500 });
+  } catch (err) {
+    console.error("Payment Submission Error:", err);
+    return json({ error: "Failed to initiate payment", details: err.message }, { status: 500 });
   }
 };
 
 export default function Pay() {
-  const data = useLoaderData();
+  const initialData = useLoaderData();
+  const fetcher = useFetcher();
 
-  if (data?.error) {
+  if (initialData?.error && !initialData?.orderName) {
     return (
-      <div style={{ fontFamily: "system-ui, sans-serif", padding: "40px", textAlign: "center", color: "#d32f2f" }}>
+      <div style={{ fontFamily: "system-ui, sans-serif", padding: "40px", textAlign: "center", color: "#ef4444", backgroundColor: "#090d16", minHeight: "100vh" }}>
         <h2>Payment Error</h2>
-        <p>{data.error}</p>
-        {data.details && <pre style={{ background: "#f5f5f5", padding: "10px", display: "inline-block" }}>{data.details}</pre>}
+        <p>{initialData.error}</p>
       </div>
     );
   }
 
-  const res = data?.gatewayResponse || {};
+  const result = fetcher.data;
+  const isSubmitted = !!result;
+  const res = result?.gatewayResponse || {};
   const isSuccess = res.pp_ResponseCode === '000' || res.responseCode === '000' || res.success === true;
-  const isPending = res.pp_ResponseCode === '124' || res.pp_ResponseCode === '157' || res.responseCode === '124';
+  const isPending = res.pp_ResponseCode === '124' || res.pp_ResponseCode === '157' || res.responseCode === '124' || result?.success;
 
   return (
     <div style={{
@@ -184,45 +218,157 @@ export default function Pay() {
         backgroundColor: "#111827",
         borderRadius: "16px",
         border: "1px solid #1f2937",
-        padding: "28px",
-        textAlign: "center",
-        boxShadow: "0 25px 50px -12px rgba(0,0,0,0.7)"
+        padding: "32px",
+        boxShadow: "0 25px 50px -12px rgba(0,0,0,0.8)"
       }}>
-        <div style={{ fontSize: "40px", marginBottom: "12px" }}>
-          {isSuccess ? "✅" : (isPending ? "⏳" : "❌")}
+        {/* Header */}
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
+          <div style={{
+            width: "56px",
+            height: "56px",
+            borderRadius: "14px",
+            backgroundColor: "#ef4444",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "24px",
+            fontWeight: "bold",
+            color: "#fff",
+            marginBottom: "12px"
+          }}>
+            JC
+          </div>
+          <h2 style={{ fontSize: "20px", fontWeight: "700", margin: "0 0 4px 0", color: "#ffffff" }}>
+            JazzCash Mobile Wallet
+          </h2>
+          <p style={{ fontSize: "13px", color: "#9ca3af", margin: 0 }}>
+            Ultra Digital Connect Sub-Merchant Gateway
+          </p>
         </div>
 
-        <h2 style={{ fontSize: "20px", margin: "0 0 6px 0", color: isSuccess ? "#34d399" : (isPending ? "#fcd34d" : "#fda4af") }}>
-          {isSuccess ? "Payment Successful!" : (isPending ? "Payment Pending / MPIN Prompted" : "Payment Request Submitted")}
-        </h2>
-
-        <p style={{ fontSize: "13px", color: "#9ca3af", margin: "0 0 20px 0" }}>
-          {isPending ? "Please check your mobile phone for the JazzCash MPIN prompt to authorize payment." : (res.responseMessage || res.pp_ResponseMessage || "Processed via Ultra Digital Connect Gateway")}
-        </p>
-
-        <div style={{ backgroundColor: "#030712", borderRadius: "10px", padding: "16px", border: "1px solid #1f2937", textAlign: "left", fontSize: "12px", marginBottom: "20px" }}>
+        {/* Order Details Card */}
+        <div style={{
+          backgroundColor: "#030712",
+          borderRadius: "12px",
+          padding: "16px",
+          border: "1px solid #1f2937",
+          fontSize: "13px",
+          marginBottom: "24px"
+        }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
             <span style={{ color: "#9ca3af" }}>Store:</span>
-            <strong style={{ color: "#38bdf8" }}>{data?.storeName}</strong>
+            <strong style={{ color: "#38bdf8" }}>{initialData?.storeName}</strong>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-            <span style={{ color: "#9ca3af" }}>Shopify Order:</span>
-            <strong style={{ color: "#ffffff" }}>{data?.orderName}</strong>
+            <span style={{ color: "#9ca3af" }}>Order:</span>
+            <strong style={{ color: "#ffffff" }}>{initialData?.orderName}</strong>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-            <span style={{ color: "#9ca3af" }}>Amount:</span>
-            <strong style={{ color: "#10b981", fontSize: "14px" }}>Rs. {data?.amountPKR?.toLocaleString()}</strong>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "#9ca3af" }}>Total Amount:</span>
+            <strong style={{ color: "#10b981", fontSize: "16px" }}>Rs. {initialData?.amountPKR?.toLocaleString()}</strong>
           </div>
-          {res.txnRefNo && (
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "#9ca3af" }}>Txn Ref:</span>
-              <strong style={{ color: "#d1d5db", fontFamily: "monospace" }}>{res.txnRefNo}</strong>
-            </div>
-          )}
         </div>
 
-        <div style={{ fontSize: "11px", color: "#6b7280" }}>
-          Powered by <strong>Ultra Digital Connect Gateway</strong> &bull; Synced with MongoDB Atlas
+        {!isSubmitted ? (
+          /* Mobile Number Input Form */
+          <fetcher.Form method="post" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <input type="hidden" name="orderId" value={initialData.orderId} />
+            <input type="hidden" name="shop" value={initialData.shop} />
+            <input type="hidden" name="orderName" value={initialData.orderName} />
+            <input type="hidden" name="amountPKR" value={initialData.amountPKR} />
+
+            <div>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "8px", color: "#d1d5db" }}>
+                JazzCash Mobile Account Number
+              </label>
+              <input
+                type="tel"
+                name="mobileNo"
+                defaultValue={initialData.customerPhone || "03001234567"}
+                placeholder="03001234567"
+                required
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  fontSize: "15px",
+                  backgroundColor: "#1f2937",
+                  border: "1px solid #374151",
+                  borderRadius: "8px",
+                  color: "#ffffff",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  fontFamily: "monospace"
+                }}
+              />
+              <span style={{ fontSize: "11px", color: "#6b7280", marginTop: "6px", display: "block" }}>
+                Enter your 11-digit JazzCash registered mobile number.
+              </span>
+            </div>
+
+            {result?.error && (
+              <div style={{ color: "#ef4444", fontSize: "12px", backgroundColor: "#450a0a", padding: "10px", borderRadius: "6px" }}>
+                {result.error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={fetcher.state !== "idle"}
+              style={{
+                backgroundColor: "#dc2626",
+                color: "#ffffff",
+                fontWeight: "700",
+                fontSize: "15px",
+                padding: "14px",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                transition: "all 0.2s ease"
+              }}
+            >
+              {fetcher.state !== "idle" ? "Initiating 2FA Prompt..." : `Pay Rs. ${initialData?.amountPKR?.toLocaleString()} via JazzCash`}
+            </button>
+          </fetcher.Form>
+        ) : (
+          /* Payment Result State */
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: "36px", marginBottom: "8px" }}>
+              {isSuccess ? "✅" : "⏳"}
+            </div>
+            <h3 style={{ fontSize: "18px", color: isSuccess ? "#34d399" : "#fcd34d", margin: "0 0 8px 0" }}>
+              {isSuccess ? "Payment Successful!" : "2FA MPIN Prompt Triggered!"}
+            </h3>
+            <p style={{ fontSize: "13px", color: "#9ca3af", marginBottom: "16px", lineHeight: "1.5" }}>
+              {isSuccess 
+                ? "Your payment has been verified. Thank you for your purchase!" 
+                : `Please check mobile screen for ${result.mobileNo}. Enter your 4-digit MPIN to authorize payment.`}
+            </p>
+
+            {res.txnRefNo && (
+              <div style={{ backgroundColor: "#030712", padding: "10px", borderRadius: "6px", fontSize: "12px", color: "#9ca3af", marginBottom: "16px" }}>
+                Ref No: <strong style={{ color: "#fff", fontFamily: "monospace" }}>{res.txnRefNo}</strong>
+              </div>
+            )}
+
+            <a
+              href={`https://${initialData.shop}`}
+              style={{
+                display: "inline-block",
+                padding: "10px 20px",
+                backgroundColor: "#374151",
+                color: "#fff",
+                textDecoration: "none",
+                borderRadius: "6px",
+                fontSize: "13px"
+              }}
+            >
+              Return to Store
+            </a>
+          </div>
+        )}
+
+        <div style={{ textAlign: "center", marginTop: "24px", fontSize: "11px", color: "#4b5563" }}>
+          Secured by <strong>Ultra Digital Connect Gateway</strong>
         </div>
       </div>
     </div>
