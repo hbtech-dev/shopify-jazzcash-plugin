@@ -190,17 +190,7 @@ export default function Index() {
 }
 
 export function ErrorBoundary() {
-  const error = useRouteError();
-  console.error("app._index.jsx ErrorBoundary:", error);
-  return (
-    <div style={{ padding: "30px", fontFamily: "system-ui, sans-serif", backgroundColor: "#fff", color: "#333" }}>
-      <h2 style={{ color: "#d32f2f" }}>Index Application Diagnostic Details</h2>
-      <p style={{ color: "#666" }}>{error?.message || "An error occurred while loading JazzCash app index."}</p>
-      <pre style={{ background: "#f5f5f5", padding: "14px", overflow: "auto", fontSize: "12px" }}>
-        {error?.stack || JSON.stringify(error, null, 2)}
-      </pre>
-    </div>
-  );
+  return boundary.error(useRouteError());
 }
 
 export const headers = (headersArgs) => {
