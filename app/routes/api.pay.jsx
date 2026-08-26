@@ -137,7 +137,7 @@ export const loader = async ({ request }) => {
     }
 
     if (!order) {
-      return json({ error: "Order not found on Shopify", details: `Target ID: ${cleanId}` }, { status: 404 });
+      return json({ error: "Order not found on Shopify", details: `Target ID: ${cleanId} | Total store orders found: ${nodes.length}` }, { status: 404 });
     }
 
     if (order.financialStatus === "PAID") {
