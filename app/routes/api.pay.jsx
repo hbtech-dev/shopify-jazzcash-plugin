@@ -1,6 +1,7 @@
 import { json } from "react-router";
 import { useLoaderData } from "react-router";
 import prisma from "../db.server";
+// Central Gateway Payment Proxy Endpoint for Shopify Checkout
 import { shopifyApi, ApiVersion } from "@shopify/shopify-api";
 
 // Helper to format Pakistani mobile number to 11 digits (e.g., 03001234567)
