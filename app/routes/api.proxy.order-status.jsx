@@ -1,4 +1,4 @@
-import { json } from "react-router";
+const json = (data, init) => Response.json(data, init);
 import crypto from "crypto";
 import prisma from "../db.server";
 import { shopifyApi, ApiVersion } from "@shopify/shopify-api";

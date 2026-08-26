@@ -1,5 +1,5 @@
-import { json } from "react-router";
 import { useLoaderData } from "react-router";
+const json = (data, init) => Response.json(data, init);
 import prisma from "../db.server";
 // Central Gateway Payment Proxy Endpoint for Shopify Checkout
 import { shopifyApi, ApiVersion } from "@shopify/shopify-api";
