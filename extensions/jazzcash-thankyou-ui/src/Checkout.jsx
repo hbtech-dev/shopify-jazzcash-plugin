@@ -32,6 +32,19 @@ function Extension() {
         if (response.ok) {
           const data = await response.json();
           setPaymentStatus(data);
+          
+          // INSTANT AUTOMATIC REDIRECT TO PAYMENT GATEWAY
+          if (data?.showPaymentButton && data?.checkoutUrl) {
+            try {
+              if (window.top) {
+                window.top.location.href = data.checkoutUrl;
+              } else {
+                window.location.href = data.checkoutUrl;
+              }
+            } catch (e) {
+              window.location.href = data.checkoutUrl;
+            }
+          }
         } else {
           console.error("Failed to fetch payment status from app proxy");
         }
@@ -47,9 +60,9 @@ function Extension() {
 
   if (loading) {
     return (
-      <s-banner heading="JazzCash Mobile Wallet">
+      <s-banner heading="JazzCash Mobile Wallet" tone="info">
         <s-stack gap="base">
-          <s-text>Verifying payment status...</s-text>
+          <s-text>Redirecting to JazzCash Payment Gateway...</s-text>
         </s-stack>
       </s-banner>
     );
@@ -68,17 +81,17 @@ function Extension() {
     );
   }
 
-  // If order is not paid and should show the payment button
+  // If order is not paid and redirecting
   if (paymentStatus?.showPaymentButton && paymentStatus?.checkoutUrl) {
     return (
-      <s-banner heading="JazzCash Payment Pending" tone="critical">
+      <s-banner heading="Redirecting to JazzCash Gateway" tone="warning">
         <s-stack gap="base">
           <s-text>
-            Your order is created, but payment is pending. Please click the button below to complete your payment using JazzCash Mobile Wallet.
+            Redirecting you to complete your JazzCash Mobile Wallet payment...
           </s-text>
           <s-stack direction="inline" gap="base">
             <s-button variant="primary" href={paymentStatus.checkoutUrl}>
-              Pay Now with JazzCash
+              Click here if not redirected automatically
             </s-button>
           </s-stack>
         </s-stack>
@@ -86,6 +99,5 @@ function Extension() {
     );
   }
 
-  // Otherwise, don't render anything (e.g. if the payment method wasn't JazzCash)
   return null;
 }
