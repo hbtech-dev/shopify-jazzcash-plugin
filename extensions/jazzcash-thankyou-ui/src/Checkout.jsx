@@ -25,28 +25,23 @@ function Extension() {
 
     const fetchPaymentStatus = async () => {
       try {
-        // Fetch status relative to the current store domain (routes through Shopify App Proxy)
         const response = await fetch(
           `/apps/jazzcash/order-status?order_id=${encodeURIComponent(orderId)}&shop=${shopDomain}`
         );
         if (response.ok) {
           const data = await response.json();
           setPaymentStatus(data);
-          
-          // INSTANT AUTOMATIC REDIRECT TO PAYMENT GATEWAY
+
+          // Safely redirect if supported in browser environment
           if (data?.showPaymentButton && data?.checkoutUrl) {
             try {
-              if (window.top) {
-                window.top.location.href = data.checkoutUrl;
-              } else {
+              if (typeof window !== "undefined" && window?.location) {
                 window.location.href = data.checkoutUrl;
               }
             } catch (e) {
-              window.location.href = data.checkoutUrl;
+              console.log("Safe redirect fallback triggered");
             }
           }
-        } else {
-          console.error("Failed to fetch payment status from app proxy");
         }
       } catch (err) {
         console.error("Error fetching payment status:", err);
@@ -62,7 +57,7 @@ function Extension() {
     return (
       <s-banner heading="JazzCash Mobile Wallet" tone="info">
         <s-stack gap="base">
-          <s-text>Redirecting to JazzCash Payment Gateway...</s-text>
+          <s-text>Checking payment status...</s-text>
         </s-stack>
       </s-banner>
     );
@@ -81,17 +76,17 @@ function Extension() {
     );
   }
 
-  // If order is not paid and redirecting
+  // If order is not paid, show prominent payment banner with direct action button
   if (paymentStatus?.showPaymentButton && paymentStatus?.checkoutUrl) {
     return (
-      <s-banner heading="Redirecting to JazzCash Gateway" tone="warning">
+      <s-banner heading="JazzCash Payment Pending" tone="critical">
         <s-stack gap="base">
           <s-text>
-            Redirecting you to complete your JazzCash Mobile Wallet payment...
+            Your order has been created. Click the button below to complete your payment using JazzCash Mobile Wallet.
           </s-text>
           <s-stack direction="inline" gap="base">
             <s-button variant="primary" href={paymentStatus.checkoutUrl}>
-              Click here if not redirected automatically
+              👉 Pay Now with JazzCash
             </s-button>
           </s-stack>
         </s-stack>
