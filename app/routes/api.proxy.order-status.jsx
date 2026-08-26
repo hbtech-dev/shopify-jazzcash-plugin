@@ -100,15 +100,10 @@ export const loader = async ({ request }) => {
 
     const isPaid = order.financialStatus === "PAID";
     
-    // Check if the order was placed using a payment gateway named containing "jazzcash"
-    const hasJazzCash = order.paymentGatewayNames.some(
-      (name) => name.toLowerCase().includes("jazzcash")
-    );
-
-    // If already paid or not a JazzCash order, don't show the payment button
-    if (isPaid || !hasJazzCash) {
+    // If already paid, don't show the payment button
+    if (isPaid) {
       return json({
-        paid: isPaid,
+        paid: true,
         showPaymentButton: false,
       });
     }
