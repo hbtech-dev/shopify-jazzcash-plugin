@@ -2,7 +2,7 @@
 
 client_id = "696ff8ccef0989d434b80d2ce88b07bf"
 name = "Jaazcash "
-application_url = "https://jazzcash.ultradigital.cc"
+application_url = "https://shopify-jazzcash-plugin-production.up.railway.app"
 embedded = true
 
 [access_scopes]

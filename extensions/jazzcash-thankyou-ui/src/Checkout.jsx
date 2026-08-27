@@ -15,7 +15,7 @@ import {
 } from "@shopify/ui-extensions/checkout";
 
 const APP_URL =
-  "https://jazzcash.ultradigital.cc";
+  "https://shopify-jazzcash-plugin-production.up.railway.app";
 
 export default extension("purchase.thank-you.block.render", (root, api) => {
   renderPayment(root, api);
