@@ -240,15 +240,18 @@ export default function Pay() {
     return () => clearInterval(timer);
   }, [paymentStatus, timeLeft, isTimedOut]);
 
-  // Auto-Redirect on PAID Status
+  // Redirect to Return URL when Payment Completes
   useEffect(() => {
     if (paymentStatus === "PAID" && initialData?.returnUrl) {
       const redirectTimer = setTimeout(() => {
-        window.location.href = initialData.returnUrl;
+        const url = new URL(initialData.returnUrl);
+        url.searchParams.set("paid", "true");
+        url.searchParams.set("bill_ref", res?.txnRefNo || initialData.orderName || "WOO-PAID");
+        window.location.href = url.toString();
       }, 2000);
       return () => clearTimeout(redirectTimer);
     }
-  }, [paymentStatus, initialData?.returnUrl]);
+  }, [paymentStatus, initialData?.returnUrl, initialData?.orderName, res?.txnRefNo]);
 
   // Handle Form Submit
   const handleSubmit = (e) => {
