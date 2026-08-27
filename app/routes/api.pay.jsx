@@ -41,7 +41,6 @@ export const loader = async ({ request }) => {
     return json({ error: "Missing order details" }, { status: 400 });
   }
 
-  // Handle WooCommerce or Generic Requests
   if (merchantId || amountParam) {
     return {
       orderId: orderId || `WOO-${Date.now()}`,
@@ -158,7 +157,7 @@ export const action = async ({ request }) => {
     const amountPKR = parseFloat(formData.get("amountPKR") || "0");
     const orderName = formData.get("orderName") || "Order";
 
-    // Call Central Gateway
+    // Call Central Gateway API
     const gatewayUrl = "https://api.ultradigital.cc/api/payment";
     const gatewayPayload = {
       subMerchantName: storeCode,
@@ -200,52 +199,58 @@ export default function Pay() {
   const [phoneError, setPhoneError] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
   const [isTimedOut, setIsTimedOut] = useState(false);
-  const [paymentApproved, setPaymentApproved] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState("IDLE"); // IDLE | PENDING | PAID | DECLINED
 
   const result = fetcher.data;
-  const isSubmitted = !!result && result.success;
+  const isSubmitted = fetcher.state === "submitting" || !!result;
+  const res = result?.gatewayResponse || {};
 
-  // 60-Second Countdown Timer & Auto Polling Approval Effect
+  // Update Status on Action Submission Response
+  useEffect(() => {
+    if (result && result.success) {
+      const code = String(res.pp_ResponseCode || res.responseCode || "");
+      const statusStr = String(res.status || "").toUpperCase();
+
+      if (code === "000" || statusStr === "PAID" || res.success === true) {
+        setPaymentStatus("PAID");
+      } else if (code === "157" || code === "999" || statusStr === "DECLINED" || statusStr === "FAILED" || statusStr === "CANCELLED") {
+        setPaymentStatus("DECLINED");
+      } else {
+        setPaymentStatus("PENDING");
+      }
+    }
+  }, [result, res]);
+
+  // 60-Second Countdown Timer Effect for PENDING state
   useEffect(() => {
     let timer;
-    let pollTimer;
-
-    if (isSubmitted && !paymentApproved && timeLeft > 0 && !isTimedOut) {
-      // 1. Countdown Timer
+    if (paymentStatus === "PENDING" && timeLeft > 0 && !isTimedOut) {
       timer = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
             setIsTimedOut(true);
+            setPaymentStatus("DECLINED");
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
-
-      // 2. Real-Time Status Check (Simulates / checks MPIN approval after 3 seconds)
-      pollTimer = setTimeout(() => {
-        setPaymentApproved(true);
-      }, 3500);
     }
+    return () => clearInterval(timer);
+  }, [paymentStatus, timeLeft, isTimedOut]);
 
-    return () => {
-      clearInterval(timer);
-      clearTimeout(pollTimer);
-    };
-  }, [isSubmitted, paymentApproved, timeLeft, isTimedOut]);
-
-  // Redirect to Return URL when Payment Completes
+  // Auto-Redirect on PAID Status
   useEffect(() => {
-    if (paymentApproved && initialData?.returnUrl) {
+    if (paymentStatus === "PAID" && initialData?.returnUrl) {
       const redirectTimer = setTimeout(() => {
         window.location.href = initialData.returnUrl;
       }, 2000);
       return () => clearTimeout(redirectTimer);
     }
-  }, [paymentApproved, initialData?.returnUrl]);
+  }, [paymentStatus, initialData?.returnUrl]);
 
-  // Handle Form Submission Validation
+  // Handle Form Submit
   const handleSubmit = (e) => {
     if (!isValidPakistaniMobile(mobileInput)) {
       e.preventDefault();
@@ -255,66 +260,84 @@ export default function Pay() {
     setPhoneError("");
     setTimeLeft(60);
     setIsTimedOut(false);
-    setPaymentApproved(false);
+    setPaymentStatus("IDLE");
   };
 
   return (
     <div style={{
-      fontFamily: "system-ui, -apple-system, sans-serif",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       minHeight: "100vh",
-      backgroundColor: "#0f172a",
+      backgroundColor: "#12150d",
       color: "#ffffff",
       padding: "20px"
     }}>
       <div style={{
         maxWidth: "460px",
         width: "100%",
-        backgroundColor: "#1e293b",
+        backgroundColor: "#1c2217",
         borderRadius: "16px",
-        border: "1px solid #334155",
+        border: "1px solid rgba(192, 236, 0, 0.2)",
         padding: "32px",
-        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.4)",
+        boxShadow: "0 20px 40px rgba(0, 0, 0, 0.6)",
         position: "relative"
       }}>
-        {/* Header - Clean Text without Custom Logo */}
+        {/* Header - Matching www.ultradigital.cc Branding */}
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <h2 style={{ fontSize: "24px", fontWeight: "800", margin: "0 0 6px 0", color: "#38bdf8", letterSpacing: "-0.5px" }}>
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            backgroundColor: "#242b1d",
+            padding: "6px 14px",
+            borderRadius: "9999px",
+            marginBottom: "14px",
+            border: "1px solid rgba(192, 236, 0, 0.3)"
+          }}>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#c0ec00", display: "inline-block" }}></span>
+            <span style={{ fontSize: "12px", color: "#c0ec00", fontWeight: "700", letterSpacing: "0.5px" }}>
+              Gateway Online • 2FA Protected
+            </span>
+          </div>
+
+          <h2 style={{ fontSize: "24px", fontWeight: "800", margin: "0 0 6px 0", color: "#ffffff" }}>
             Jaazcash Mobile Wallet
           </h2>
-          <p style={{ fontSize: "13px", color: "#94a3b8", margin: 0, fontWeight: "500" }}>
-            Ultra Digital Connect Sub-Merchant Gateway
+          <p style={{ fontSize: "13px", color: "#a3b899", margin: 0, fontWeight: "500" }}>
+            Ultra Digital Connect Gateway
           </p>
         </div>
 
         {/* Order Details Card */}
         <div style={{
-          backgroundColor: "#0f172a",
+          backgroundColor: "#12150d",
           borderRadius: "12px",
           padding: "18px",
-          border: "1px solid #334155",
+          border: "1px solid rgba(192, 236, 0, 0.15)",
           fontSize: "13.5px",
           marginBottom: "24px"
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-            <span style={{ color: "#94a3b8" }}>Store Name:</span>
-            <strong style={{ color: "#38bdf8", fontWeight: "700" }}>{initialData?.storeName}</strong>
+            <span style={{ color: "#a3b899" }}>Store Name:</span>
+            <strong style={{ color: "#ffffff", fontWeight: "700" }}>{initialData?.storeName}</strong>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-            <span style={{ color: "#94a3b8" }}>Order Reference:</span>
+            <span style={{ color: "#a3b899" }}>Order Reference:</span>
             <strong style={{ color: "#ffffff", fontWeight: "700" }}>{initialData?.orderName}</strong>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "6px", borderTop: "1px solid #1e293b" }}>
-            <span style={{ color: "#94a3b8" }}>Total Amount:</span>
-            <strong style={{ color: "#22c55e", fontSize: "17px", fontWeight: "800" }}>Rs. {initialData?.amountPKR?.toLocaleString()}</strong>
+          <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "8px", borderTop: "1px solid #242b1d" }}>
+            <span style={{ color: "#a3b899" }}>Total Amount:</span>
+            <strong style={{ color: "#c0ec00", fontSize: "18px", fontWeight: "800" }}>
+              Rs. {initialData?.amountPKR?.toLocaleString()}
+            </strong>
           </div>
         </div>
 
-        {!isSubmitted ? (
-          /* Step 1: Mobile Form */
-          <fetcher.Form method="post" onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {paymentStatus === "IDLE" && (
+          /* Mobile Input Form with www.ultradigital.cc Start Integration Button Style */
+          <fetcher.Form method="post" onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
             <input type="hidden" name="orderId" value={initialData.orderId} />
             <input type="hidden" name="shop" value={initialData.shop} />
             <input type="hidden" name="orderName" value={initialData.orderName} />
@@ -322,7 +345,7 @@ export default function Pay() {
             <input type="hidden" name="returnUrl" value={initialData.returnUrl} />
 
             <div>
-              <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "8px", color: "#e2e8f0" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "8px", color: "#ffffff" }}>
                 JazzCash Mobile Account Number
               </label>
               <input
@@ -340,8 +363,8 @@ export default function Pay() {
                   width: "100%",
                   padding: "12px 14px",
                   fontSize: "15px",
-                  backgroundColor: "#0f172a",
-                  border: phoneError ? "1px solid #ef4444" : "1px solid #475569",
+                  backgroundColor: "#12150d",
+                  border: phoneError ? "1px solid #ef4444" : "1px solid rgba(192, 236, 0, 0.3)",
                   borderRadius: "8px",
                   color: "#ffffff",
                   outline: "none",
@@ -354,165 +377,193 @@ export default function Pay() {
                   ⚠️ {phoneError}
                 </span>
               ) : (
-                <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "6px", display: "block" }}>
+                <span style={{ fontSize: "11px", color: "#8a9e80", marginTop: "6px", display: "block" }}>
                   Enter your active 11-digit JazzCash registered mobile number.
                 </span>
               )}
             </div>
 
             {fetcher.data?.error && (
-              <div style={{ color: "#f87171", fontSize: "12px", backgroundColor: "#450a0a", padding: "10px", borderRadius: "6px" }}>
+              <div style={{ color: "#f87171", fontSize: "12px", backgroundColor: "#450a0a", padding: "10px", borderRadius: "6px", border: "1px solid #7f1d1d" }}>
                 ❌ {fetcher.data.error}
               </div>
             )}
 
+            {/* Start Integration Button Styling: Vibrant Lime Green #c0ec00 with Bold Black Text */}
             <button
               type="submit"
               disabled={fetcher.state !== "idle"}
               style={{
-                backgroundColor: "#0284c7",
-                color: "#ffffff",
-                fontWeight: "700",
+                backgroundColor: "#c0ec00",
+                color: "#000000",
+                fontWeight: "800",
                 fontSize: "15px",
-                padding: "14px",
+                padding: "14px 20px",
                 border: "none",
                 borderRadius: "8px",
                 cursor: "pointer",
-                transition: "all 0.2s ease"
+                transition: "all 0.2s ease",
+                boxShadow: "0 4px 16px rgba(192, 236, 0, 0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px"
               }}
             >
-              {fetcher.state !== "idle" ? "Processing..." : `Pay Rs. ${initialData?.amountPKR?.toLocaleString()} via JazzCash`}
+              {fetcher.state !== "idle" ? (
+                "Sending 2FA MPIN Request..."
+              ) : (
+                <>
+                  <span>⚡ Pay Rs. {initialData?.amountPKR?.toLocaleString()} via JazzCash</span>
+                </>
+              )}
             </button>
           </fetcher.Form>
-        ) : (
-          /* Step 2: Live Payment Approval & 60s Timer Screen */
+        )}
+
+        {paymentStatus === "PENDING" && (
+          /* Live 60s Waiting Screen for MPIN */
           <div style={{ textAlign: "center", padding: "12px 0" }}>
-            {paymentApproved ? (
-              /* Success State */
-              <div>
-                <div style={{ fontSize: "52px", marginBottom: "12px" }}>✅</div>
-                <h3 style={{ fontSize: "22px", color: "#4ade80", margin: "0 0 8px 0", fontWeight: "800" }}>
-                  Payment Approved!
-                </h3>
-                <p style={{ fontSize: "14px", color: "#cbd5e1", marginBottom: "20px" }}>
-                  Your MPIN has been verified. Redirecting back to store...
-                </p>
-                {initialData?.returnUrl && (
-                  <a
-                    href={initialData.returnUrl}
-                    style={{
-                      display: "inline-block",
-                      padding: "12px 28px",
-                      backgroundColor: "#16a34a",
-                      color: "#fff",
-                      textDecoration: "none",
-                      borderRadius: "8px",
-                      fontWeight: "700"
-                    }}
-                  >
-                    Return to Store
-                  </a>
-                )}
+            <div style={{ position: "relative", width: "72px", height: "72px", margin: "0 auto 16px auto" }}>
+              <div style={{
+                width: "72px",
+                height: "72px",
+                borderRadius: "50%",
+                border: "4px solid #c0ec00",
+                borderTopColor: "transparent",
+                animation: "spin 1s linear infinite"
+              }}></div>
+              <div style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                fontSize: "24px"
+              }}>
+                📱
               </div>
-            ) : isTimedOut ? (
-              /* Timeout State */
-              <div>
-                <div style={{ fontSize: "52px", marginBottom: "12px" }}>⏰</div>
-                <h3 style={{ fontSize: "20px", color: "#f87171", margin: "0 0 8px 0" }}>
-                  Payment Timed Out (1 min)
-                </h3>
-                <p style={{ fontSize: "13px", color: "#cbd5e1", marginBottom: "20px", lineHeight: "1.5" }}>
-                  You did not enter your 5-digit JazzCash MPIN on your mobile phone within 60 seconds. The payment request was cancelled.
-                </p>
-                <button
-                  onClick={() => {
-                    setIsTimedOut(false);
-                    setTimeLeft(60);
-                    setPaymentApproved(false);
-                    window.location.reload();
-                  }}
-                  style={{
-                    backgroundColor: "#0284c7",
-                    color: "#ffffff",
-                    fontWeight: "700",
-                    fontSize: "14px",
-                    padding: "12px 24px",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: "pointer"
-                  }}
-                >
-                  🔄 Retry Payment
-                </button>
+            </div>
+
+            <h3 style={{ fontSize: "18px", color: "#c0ec00", margin: "0 0 8px 0", fontWeight: "800" }}>
+              MPIN Prompt Sent to Mobile Phone!
+            </h3>
+
+            <p style={{ fontSize: "13px", color: "#d1d5db", marginBottom: "16px", lineHeight: "1.5" }}>
+              Please check mobile screen for <strong style={{ color: "#fff", fontFamily: "monospace" }}>{result?.mobileNo || mobileInput}</strong> or open your <strong>JazzCash App</strong> to authorize payment.
+            </p>
+
+            <div style={{
+              backgroundColor: "#12150d",
+              borderRadius: "12px",
+              padding: "16px",
+              border: "1px solid rgba(192, 236, 0, 0.2)",
+              marginBottom: "20px"
+            }}>
+              <div style={{ fontSize: "12px", color: "#8a9e80", marginBottom: "4px", fontWeight: "600" }}>
+                TIME REMAINING TO AUTHORIZE MPIN:
               </div>
-            ) : (
-              /* Waiting for MPIN Screen with 60s Countdown */
-              <div>
-                <div style={{ position: "relative", width: "72px", height: "72px", margin: "0 auto 16px auto" }}>
-                  <div style={{
-                    width: "72px",
-                    height: "72px",
-                    borderRadius: "50%",
-                    border: "4px solid #38bdf8",
-                    borderTopColor: "transparent",
-                    animation: "spin 1s linear infinite"
-                  }}></div>
-                  <div style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    fontSize: "24px"
-                  }}>
-                    📱
-                  </div>
-                </div>
+              <div style={{ fontSize: "28px", fontWeight: "800", color: timeLeft <= 10 ? "#ef4444" : "#c0ec00", fontFamily: "monospace" }}>
+                00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+              </div>
 
-                <h3 style={{ fontSize: "18px", color: "#fbbf24", margin: "0 0 8px 0", fontWeight: "700" }}>
-                  MPIN Prompt Sent to Mobile Phone!
-                </h3>
-
-                <p style={{ fontSize: "13px", color: "#cbd5e1", marginBottom: "16px", lineHeight: "1.5" }}>
-                  Please check screen on <strong style={{ color: "#fff", fontFamily: "monospace" }}>{result.mobileNo}</strong> or open your <strong>JazzCash App</strong> to approve payment.
-                </p>
-
-                {/* Countdown Box */}
+              <div style={{ width: "100%", height: "6px", backgroundColor: "#242b1d", borderRadius: "3px", marginTop: "10px", overflow: "hidden" }}>
                 <div style={{
-                  backgroundColor: "#0f172a",
-                  borderRadius: "12px",
-                  padding: "16px",
-                  border: "1px solid #334155",
-                  marginBottom: "20px"
-                }}>
-                  <div style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "4px", fontWeight: "600" }}>
-                    TIME REMAINING TO AUTHORIZE MPIN:
-                  </div>
-                  <div style={{ fontSize: "28px", fontWeight: "800", color: timeLeft <= 10 ? "#ef4444" : "#4ade80", fontFamily: "monospace" }}>
-                    00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
-                  </div>
-
-                  <div style={{ width: "100%", height: "6px", backgroundColor: "#334155", borderRadius: "3px", marginTop: "10px", overflow: "hidden" }}>
-                    <div style={{
-                      width: `${(timeLeft / 60) * 100}%`,
-                      height: "100%",
-                      backgroundColor: timeLeft <= 10 ? "#ef4444" : "#4ade80",
-                      transition: "width 1s linear"
-                    }}></div>
-                  </div>
-                </div>
-
-                <style>{`
-                  @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                  }
-                `}</style>
+                  width: `${(timeLeft / 60) * 100}%`,
+                  height: "100%",
+                  backgroundColor: timeLeft <= 10 ? "#ef4444" : "#c0ec00",
+                  transition: "width 1s linear"
+                }}></div>
               </div>
+            </div>
+
+            <button
+              onClick={() => setPaymentStatus("IDLE")}
+              style={{
+                backgroundColor: "transparent",
+                color: "#8a9e80",
+                fontSize: "12px",
+                border: "none",
+                cursor: "pointer",
+                textDecoration: "underline"
+              }}
+            >
+              Cancel & Change Mobile Number
+            </button>
+
+            <style>{`
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+            `}</style>
+          </div>
+        )}
+
+        {paymentStatus === "PAID" && (
+          /* Success Screen */
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <div style={{ fontSize: "52px", marginBottom: "12px" }}>✅</div>
+            <h3 style={{ fontSize: "22px", color: "#c0ec00", margin: "0 0 8px 0", fontWeight: "800" }}>
+              Payment Approved!
+            </h3>
+            <p style={{ fontSize: "14px", color: "#ffffff", marginBottom: "20px" }}>
+              Your MPIN has been verified. Redirecting back to store...
+            </p>
+            {initialData?.returnUrl && (
+              <a
+                href={initialData.returnUrl}
+                style={{
+                  display: "inline-block",
+                  padding: "12px 28px",
+                  backgroundColor: "#c0ec00",
+                  color: "#000000",
+                  textDecoration: "none",
+                  borderRadius: "8px",
+                  fontWeight: "800"
+                }}
+              >
+                Return to Store
+              </a>
             )}
           </div>
         )}
 
-        <div style={{ textAlign: "center", marginTop: "24px", fontSize: "12px", color: "#64748b" }}>
+        {paymentStatus === "DECLINED" && (
+          /* Declined / Cancelled Screen - Triggered instantly if user declines MPIN on phone */
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <div style={{ fontSize: "52px", marginBottom: "12px" }}>❌</div>
+            <h3 style={{ fontSize: "20px", color: "#f87171", margin: "0 0 8px 0", fontWeight: "800" }}>
+              Payment Cancelled / Declined
+            </h3>
+            <p style={{ fontSize: "13px", color: "#cbd5e1", marginBottom: "20px", lineHeight: "1.5" }}>
+              {isTimedOut 
+                ? "The 60-second window to enter your MPIN has expired." 
+                : "The payment request was rejected or cancelled on your mobile phone."}
+            </p>
+            <button
+              onClick={() => {
+                setIsTimedOut(false);
+                setTimeLeft(60);
+                setPaymentStatus("IDLE");
+              }}
+              style={{
+                backgroundColor: "#c0ec00",
+                color: "#000000",
+                fontWeight: "800",
+                fontSize: "14px",
+                padding: "12px 26px",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                boxShadow: "0 4px 16px rgba(192, 236, 0, 0.3)"
+              }}
+            >
+              🔄 Retry Payment
+            </button>
+          </div>
+        )}
+
+        <div style={{ textAlign: "center", marginTop: "24px", fontSize: "12px", color: "#8a9e80" }}>
           Secured by <strong>Ultra Digital Connect Gateway</strong>
         </div>
       </div>
