@@ -200,7 +200,7 @@ export default function Pay() {
   const initialData = useLoaderData();
   const fetcher = useFetcher();
 
-  const [mobileInput, setMobileInput] = useState(initialData?.customerPhone || "03001234567");
+  const [mobileInput, setMobileInput] = useState(initialData?.customerPhone || "");
   const [phoneError, setPhoneError] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
   const [isTimedOut, setIsTimedOut] = useState(false);
@@ -373,6 +373,7 @@ export default function Pay() {
                 }}
                 placeholder="03001234567"
                 maxLength={11}
+                autoComplete="off"
                 required
                 style={{
                   width: "100%",
