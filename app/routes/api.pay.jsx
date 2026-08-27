@@ -248,12 +248,13 @@ export default function Pay() {
       const redirectTimer = setTimeout(() => {
         const url = new URL(initialData.returnUrl);
         url.searchParams.set("paid", "true");
-        url.searchParams.set("bill_ref", res?.txnRefNo || initialData.orderName || "WOO-PAID");
+        url.searchParams.set("txn_id", res?.txnRefNo || `UDC-${Date.now()}`);
+        url.searchParams.set("bill_ref", res?.billReference || initialData.orderName || "WOO-PAID");
         window.location.href = url.toString();
       }, 2000);
       return () => clearTimeout(redirectTimer);
     }
-  }, [paymentStatus, initialData?.returnUrl, initialData?.orderName, res?.txnRefNo]);
+  }, [paymentStatus, initialData?.returnUrl, initialData?.orderName, res?.txnRefNo, res?.billReference]);
 
   const handleSubmit = (e) => {
     if (!isValidPakistaniMobile(mobileInput)) {
