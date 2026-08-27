@@ -17,7 +17,16 @@ export default function Install() {
       cleaned = `${cleaned}.myshopify.com`;
     }
 
-    window.location.href = `/auth?shop=${encodeURIComponent(cleaned)}`;
+    const targetUrl = `${window.location.origin}/auth?shop=${encodeURIComponent(cleaned)}`;
+    try {
+      if (window.top && window.top !== window.self) {
+        window.top.location.href = targetUrl;
+      } else {
+        window.location.href = targetUrl;
+      }
+    } catch (e) {
+      window.location.href = targetUrl;
+    }
   };
 
   return (
