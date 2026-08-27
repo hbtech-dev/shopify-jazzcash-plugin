@@ -1,5 +1,9 @@
 import { useState } from "react";
 
+const SHOPIFY_CLIENT_ID = "696ff8ccef0989d434b80d2ce88b07bf";
+const SCOPES = "read_products,write_products,read_orders,write_orders";
+const REDIRECT_URI = "https://shopify-jazzcash-plugin-production.up.railway.app/auth/callback";
+
 export default function Install() {
   const [shop, setShop] = useState("");
   const [error, setError] = useState("");
@@ -17,15 +21,17 @@ export default function Install() {
       cleaned = `${cleaned}.myshopify.com`;
     }
 
-    const targetUrl = `${window.location.origin}/auth?shop=${encodeURIComponent(cleaned)}`;
+    // Direct OAuth Authorization URL - bypasses embedded 404 redirects
+    const authorizeUrl = `https://${cleaned}/admin/oauth/authorize?client_id=${SHOPIFY_CLIENT_ID}&scope=${encodeURIComponent(SCOPES)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+
     try {
       if (window.top && window.top !== window.self) {
-        window.top.location.href = targetUrl;
+        window.top.location.href = authorizeUrl;
       } else {
-        window.location.href = targetUrl;
+        window.location.href = authorizeUrl;
       }
-    } catch (e) {
-      window.location.href = targetUrl;
+    } catch (err) {
+      window.location.href = authorizeUrl;
     }
   };
 
@@ -115,7 +121,7 @@ export default function Install() {
               setShop(e.target.value);
               setError("");
             }}
-            placeholder="my-store.myshopify.com"
+            placeholder="e.g. 17jzga-gp or store.myshopify.com"
             required
             style={{
               width: "100%",
@@ -150,7 +156,7 @@ export default function Install() {
               margin: "0 0 20px 0",
             }}
           >
-            Enter your <code>.myshopify.com</code> store URL to begin installation.
+            Enter your store handle (e.g. <code>17jzga-gp</code>) or full <code>.myshopify.com</code> URL.
           </p>
 
           <button
