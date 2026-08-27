@@ -157,6 +157,7 @@ export const action = async ({ request }) => {
     const storeCode = merchantId ? merchantId : sanitizeStoreName(shop);
     const amountPKR = parseFloat(formData.get("amountPKR") || "0");
     const orderName = formData.get("orderName") || "Order";
+    const txnRefNo = `UDC-${Date.now().toString().slice(-8)}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     // Forward to Central Gateway API
     const gatewayUrl = "https://api.ultradigital.cc/api/payment";
@@ -169,6 +170,10 @@ export const action = async ({ request }) => {
       mobileNumber: mobileNo,
       billRef: orderName,
       billReference: orderName,
+      txnRefNo: txnRefNo,
+      txnId: txnRefNo,
+      pp_TxnRefNo: txnRefNo,
+      transactionId: txnRefNo,
       description: `Order ${orderName} at ${storeCode}`,
       returnUrl: returnUrl || `https://api.ultradigital.cc/api/result`
     };
@@ -247,14 +252,15 @@ export default function Pay() {
     if (paymentStatus === "PAID" && initialData?.returnUrl) {
       const redirectTimer = setTimeout(() => {
         const url = new URL(initialData.returnUrl);
+        const transactionRef = res?.txnRefNo || res?.pp_TxnRefNo || result?.gatewayResponse?.txnRefNo || `UDC-${Date.now().toString().slice(-8)}`;
         url.searchParams.set("paid", "true");
-        url.searchParams.set("txn_id", res?.txnRefNo || `UDC-${Date.now()}`);
-        url.searchParams.set("bill_ref", res?.billReference || initialData.orderName || "WOO-PAID");
+        url.searchParams.set("txn_id", transactionRef);
+        url.searchParams.set("bill_ref", initialData.orderName || "WOO-ORDER");
         window.location.href = url.toString();
       }, 2000);
       return () => clearTimeout(redirectTimer);
     }
-  }, [paymentStatus, initialData?.returnUrl, initialData?.orderName, res?.txnRefNo, res?.billReference]);
+  }, [paymentStatus, initialData?.returnUrl, initialData?.orderName, res?.txnRefNo]);
 
   const handleSubmit = (e) => {
     if (!isValidPakistaniMobile(mobileInput)) {
