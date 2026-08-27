@@ -42,13 +42,16 @@ export const loader = async ({ request }) => {
       return json({ error: "Store connection session not found. Please re-authenticate." }, { status: 404 });
     }
 
+    // Dynamically derive request host for dual domain support (jazzcash.ultradigital.cc & railway.app)
+    const requestHost = (url.hostname || request.headers.get("host") || "jazzcash.ultradigital.cc").replace(/^https?:\/\//, "");
+
     // Query order details from Shopify Admin GraphQL API
     const shopify = new shopifyApi({
       apiKey: process.env.SHOPIFY_API_KEY,
       apiSecretKey: process.env.SHOPIFY_API_SECRET,
       apiVersion: ApiVersion.July25,
       scopes: process.env.SCOPES?.split(","),
-      hostName: (process.env.SHOPIFY_APP_URL || "shopify-jazzcash-plugin-production.up.railway.app").replace(/^https?:\/\//, ""),
+      hostName: requestHost,
       isEmbeddedApp: true,
     });
 

@@ -55,13 +55,15 @@ export const loader = async ({ request }) => {
       );
     }
 
+    const requestHost = (url.hostname || request.headers.get("host") || "jazzcash.ultradigital.cc").replace(/^https?:\/\//, "");
+
     // 2. Init Shopify API client
     const shopify = new shopifyApi({
       apiKey: process.env.SHOPIFY_API_KEY,
       apiSecretKey: process.env.SHOPIFY_API_SECRET,
       apiVersion: ApiVersion.July25,
       scopes: process.env.SCOPES?.split(","),
-      hostName: (process.env.SHOPIFY_APP_URL || "shopify-jazzcash-plugin-production.up.railway.app").replace(/^https?:\/\//, ""),
+      hostName: requestHost,
       isEmbeddedApp: true,
     });
 
@@ -121,10 +123,10 @@ export const loader = async ({ request }) => {
       }
     }
 
-    // 4. Build payment page URL
-    const appUrl =
-      process.env.SHOPIFY_APP_URL ||
-      "https://shopify-jazzcash-plugin-production.up.railway.app";
+    // 4. Build payment page URL dynamically based on incoming host
+    const scheme = request.headers.get("x-forwarded-proto") || url.protocol.replace(":", "") || "https";
+    const currentHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || requestHost;
+    const appUrl = `${scheme}://${currentHost}`;
 
     const payUrl = `${appUrl}/api/pay?order_id=${encodeURIComponent(
       resolvedOrderId

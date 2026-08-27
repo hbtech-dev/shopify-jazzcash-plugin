@@ -59,13 +59,15 @@ export const loader = async ({ request }) => {
       return json({ error: "Shop session not found" }, { status: 404 });
     }
 
+    const requestHost = (url.hostname || request.headers.get("host") || "jazzcash.ultradigital.cc").replace(/^https?:\/\//, "");
+
     // 2. Initialize Shopify API client
     const shopify = new shopifyApi({
       apiKey: process.env.SHOPIFY_API_KEY,
       apiSecretKey: process.env.SHOPIFY_API_SECRET,
       apiVersion: ApiVersion.July25,
       scopes: process.env.SCOPES?.split(","),
-      hostName: (process.env.SHOPIFY_APP_URL || "shopify-jazzcash-plugin-production.up.railway.app").replace(/^https?:\/\//, ""),
+      hostName: requestHost,
       isEmbeddedApp: true,
     });
 
