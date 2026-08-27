@@ -265,24 +265,35 @@ export default function Pay() {
 
   return (
     <div style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: "100vw",
+      height: "100vh",
+      margin: 0,
+      padding: 0,
+      backgroundColor: "#12150d",
+      color: "#ffffff",
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      minHeight: "100vh",
-      backgroundColor: "#12150d",
-      color: "#ffffff",
-      padding: "20px"
+      boxSizing: "border-box",
+      overflow: "auto",
+      zIndex: 999999
     }}>
       <div style={{
         maxWidth: "460px",
-        width: "100%",
+        width: "90%",
         backgroundColor: "#1c2217",
         borderRadius: "16px",
-        border: "1px solid rgba(192, 236, 0, 0.2)",
+        border: "1px solid rgba(192, 236, 0, 0.25)",
         padding: "32px",
-        boxShadow: "0 20px 40px rgba(0, 0, 0, 0.6)",
-        position: "relative"
+        boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.8)",
+        position: "relative",
+        boxSizing: "border-box"
       }}>
         {/* Header - Matching www.ultradigital.cc Branding */}
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
@@ -389,7 +400,6 @@ export default function Pay() {
               </div>
             )}
 
-            {/* Start Integration Button Styling: Vibrant Lime Green #c0ec00 with Bold Black Text */}
             <button
               type="submit"
               disabled={fetcher.state !== "idle"}
@@ -529,7 +539,7 @@ export default function Pay() {
         )}
 
         {paymentStatus === "DECLINED" && (
-          /* Declined / Cancelled Screen - Triggered instantly if user declines MPIN on phone */
+          /* Declined Screen */
           <div style={{ textAlign: "center", padding: "16px 0" }}>
             <div style={{ fontSize: "52px", marginBottom: "12px" }}>❌</div>
             <h3 style={{ fontSize: "20px", color: "#f87171", margin: "0 0 8px 0", fontWeight: "800" }}>
