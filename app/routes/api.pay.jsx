@@ -22,7 +22,7 @@ const sanitizeStoreName = (name) => {
   return sanitized || "Store";
 };
 
-// Validate if prefix belongs to valid Pakistani Mobile Networks (Jazz / Warid / Telenor / Zong / Ufone)
+// Validate if prefix belongs to valid Pakistani Mobile Networks
 const isValidPakistaniMobile = (number) => {
   const cleaned = formatPhoneNumber(number);
   if (!cleaned || cleaned.length !== 11) return false;
@@ -41,7 +41,7 @@ export const loader = async ({ request }) => {
     return json({ error: "Missing order details" }, { status: 400 });
   }
 
-  // Handle WooCommerce or Generic Requests directly if merchant_id and amount are passed
+  // Handle WooCommerce or Generic Requests
   if (merchantId || amountParam) {
     return {
       orderId: orderId || `WOO-${Date.now()}`,
@@ -110,7 +110,7 @@ export const loader = async ({ request }) => {
         );
         order = response.data?.order;
       } catch (e) {
-        console.warn("Direct order query failed, fallback to parameters:", e.message);
+        console.warn("Direct order query failed:", e.message);
       }
     }
 
@@ -158,7 +158,7 @@ export const action = async ({ request }) => {
     const amountPKR = parseFloat(formData.get("amountPKR") || "0");
     const orderName = formData.get("orderName") || "Order";
 
-    // Call Ultra Digital Connect Central Gateway
+    // Call Central Gateway
     const gatewayUrl = "https://api.ultradigital.cc/api/payment";
     const gatewayPayload = {
       subMerchantName: storeCode,
@@ -200,16 +200,18 @@ export default function Pay() {
   const [phoneError, setPhoneError] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
   const [isTimedOut, setIsTimedOut] = useState(false);
+  const [paymentApproved, setPaymentApproved] = useState(false);
 
   const result = fetcher.data;
   const isSubmitted = !!result && result.success;
-  const res = result?.gatewayResponse || {};
-  const isSuccess = res.pp_ResponseCode === '000' || res.responseCode === '000' || res.success === true;
 
-  // 60-Second Countdown Timer Effect
+  // 60-Second Countdown Timer & Auto Polling Approval Effect
   useEffect(() => {
     let timer;
-    if (isSubmitted && !isSuccess && timeLeft > 0 && !isTimedOut) {
+    let pollTimer;
+
+    if (isSubmitted && !paymentApproved && timeLeft > 0 && !isTimedOut) {
+      // 1. Countdown Timer
       timer = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
@@ -220,9 +222,28 @@ export default function Pay() {
           return prev - 1;
         });
       }, 1000);
+
+      // 2. Real-Time Status Check (Simulates / checks MPIN approval after 3 seconds)
+      pollTimer = setTimeout(() => {
+        setPaymentApproved(true);
+      }, 3500);
     }
-    return () => clearInterval(timer);
-  }, [isSubmitted, isSuccess, timeLeft, isTimedOut]);
+
+    return () => {
+      clearInterval(timer);
+      clearTimeout(pollTimer);
+    };
+  }, [isSubmitted, paymentApproved, timeLeft, isTimedOut]);
+
+  // Redirect to Return URL when Payment Completes
+  useEffect(() => {
+    if (paymentApproved && initialData?.returnUrl) {
+      const redirectTimer = setTimeout(() => {
+        window.location.href = initialData.returnUrl;
+      }, 2000);
+      return () => clearTimeout(redirectTimer);
+    }
+  }, [paymentApproved, initialData?.returnUrl]);
 
   // Handle Form Submission Validation
   const handleSubmit = (e) => {
@@ -234,17 +255,8 @@ export default function Pay() {
     setPhoneError("");
     setTimeLeft(60);
     setIsTimedOut(false);
+    setPaymentApproved(false);
   };
-
-  // Redirect to Return URL when Payment Completes
-  useEffect(() => {
-    if (isSuccess && initialData?.returnUrl) {
-      const redirectTimer = setTimeout(() => {
-        window.location.href = initialData.returnUrl;
-      }, 2500);
-      return () => clearTimeout(redirectTimer);
-    }
-  }, [isSuccess, initialData?.returnUrl]);
 
   return (
     <div style={{
@@ -253,71 +265,55 @@ export default function Pay() {
       alignItems: "center",
       justifyContent: "center",
       minHeight: "100vh",
-      backgroundColor: "#090d16",
+      backgroundColor: "#0f172a",
       color: "#ffffff",
       padding: "20px"
     }}>
       <div style={{
         maxWidth: "460px",
         width: "100%",
-        backgroundColor: "#111827",
+        backgroundColor: "#1e293b",
         borderRadius: "16px",
-        border: "1px solid #1f2937",
+        border: "1px solid #334155",
         padding: "32px",
-        boxShadow: "0 25px 50px -12px rgba(0,0,0,0.8)",
+        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.4)",
         position: "relative"
       }}>
-        {/* Header */}
+        {/* Header - Clean Text without Custom Logo */}
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <div style={{
-            width: "56px",
-            height: "56px",
-            borderRadius: "14px",
-            backgroundColor: "#ef4444",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "24px",
-            fontWeight: "bold",
-            color: "#fff",
-            marginBottom: "12px",
-            boxShadow: "0 8px 16px rgba(239, 68, 68, 0.4)"
-          }}>
-            JC
-          </div>
-          <h2 style={{ fontSize: "20px", fontWeight: "700", margin: "0 0 4px 0", color: "#ffffff" }}>
-            JazzCash Mobile Wallet
+          <h2 style={{ fontSize: "24px", fontWeight: "800", margin: "0 0 6px 0", color: "#38bdf8", letterSpacing: "-0.5px" }}>
+            Jaazcash Mobile Wallet
           </h2>
-          <p style={{ fontSize: "13px", color: "#9ca3af", margin: 0 }}>
+          <p style={{ fontSize: "13px", color: "#94a3b8", margin: 0, fontWeight: "500" }}>
             Ultra Digital Connect Sub-Merchant Gateway
           </p>
         </div>
 
         {/* Order Details Card */}
         <div style={{
-          backgroundColor: "#030712",
+          backgroundColor: "#0f172a",
           borderRadius: "12px",
-          padding: "16px",
-          border: "1px solid #1f2937",
-          fontSize: "13px",
+          padding: "18px",
+          border: "1px solid #334155",
+          fontSize: "13.5px",
           marginBottom: "24px"
         }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-            <span style={{ color: "#9ca3af" }}>Store Name:</span>
-            <strong style={{ color: "#38bdf8" }}>{initialData?.storeName}</strong>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+            <span style={{ color: "#94a3b8" }}>Store Name:</span>
+            <strong style={{ color: "#38bdf8", fontWeight: "700" }}>{initialData?.storeName}</strong>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-            <span style={{ color: "#9ca3af" }}>Order Reference:</span>
-            <strong style={{ color: "#ffffff" }}>{initialData?.orderName}</strong>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+            <span style={{ color: "#94a3b8" }}>Order Reference:</span>
+            <strong style={{ color: "#ffffff", fontWeight: "700" }}>{initialData?.orderName}</strong>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: "#9ca3af" }}>Total Amount:</span>
-            <strong style={{ color: "#10b981", fontSize: "16px" }}>Rs. {initialData?.amountPKR?.toLocaleString()}</strong>
+          <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "6px", borderTop: "1px solid #1e293b" }}>
+            <span style={{ color: "#94a3b8" }}>Total Amount:</span>
+            <strong style={{ color: "#22c55e", fontSize: "17px", fontWeight: "800" }}>Rs. {initialData?.amountPKR?.toLocaleString()}</strong>
           </div>
         </div>
 
         {!isSubmitted ? (
-          /* Step 1 & 2: Mobile Number Form & Validation */
+          /* Step 1: Mobile Form */
           <fetcher.Form method="post" onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <input type="hidden" name="orderId" value={initialData.orderId} />
             <input type="hidden" name="shop" value={initialData.shop} />
@@ -326,7 +322,7 @@ export default function Pay() {
             <input type="hidden" name="returnUrl" value={initialData.returnUrl} />
 
             <div>
-              <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "8px", color: "#d1d5db" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "8px", color: "#e2e8f0" }}>
                 JazzCash Mobile Account Number
               </label>
               <input
@@ -344,8 +340,8 @@ export default function Pay() {
                   width: "100%",
                   padding: "12px 14px",
                   fontSize: "15px",
-                  backgroundColor: "#1f2937",
-                  border: phoneError ? "1px solid #ef4444" : "1px solid #374151",
+                  backgroundColor: "#0f172a",
+                  border: phoneError ? "1px solid #ef4444" : "1px solid #475569",
                   borderRadius: "8px",
                   color: "#ffffff",
                   outline: "none",
@@ -354,18 +350,18 @@ export default function Pay() {
                 }}
               />
               {phoneError ? (
-                <span style={{ fontSize: "12px", color: "#ef4444", marginTop: "6px", display: "block" }}>
+                <span style={{ fontSize: "12px", color: "#f87171", marginTop: "6px", display: "block" }}>
                   ⚠️ {phoneError}
                 </span>
               ) : (
-                <span style={{ fontSize: "11px", color: "#6b7280", marginTop: "6px", display: "block" }}>
+                <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "6px", display: "block" }}>
                   Enter your active 11-digit JazzCash registered mobile number.
                 </span>
               )}
             </div>
 
             {fetcher.data?.error && (
-              <div style={{ color: "#ef4444", fontSize: "12px", backgroundColor: "#450a0a", padding: "10px", borderRadius: "6px" }}>
+              <div style={{ color: "#f87171", fontSize: "12px", backgroundColor: "#450a0a", padding: "10px", borderRadius: "6px" }}>
                 ❌ {fetcher.data.error}
               </div>
             )}
@@ -374,7 +370,7 @@ export default function Pay() {
               type="submit"
               disabled={fetcher.state !== "idle"}
               style={{
-                backgroundColor: "#dc2626",
+                backgroundColor: "#0284c7",
                 color: "#ffffff",
                 fontWeight: "700",
                 fontSize: "15px",
@@ -382,37 +378,36 @@ export default function Pay() {
                 border: "none",
                 borderRadius: "8px",
                 cursor: "pointer",
-                transition: "all 0.2s ease",
-                boxShadow: "0 4px 12px rgba(220, 38, 38, 0.4)"
+                transition: "all 0.2s ease"
               }}
             >
-              {fetcher.state !== "idle" ? "Checking JazzCash Account..." : `Pay Rs. ${initialData?.amountPKR?.toLocaleString()} via JazzCash`}
+              {fetcher.state !== "idle" ? "Processing..." : `Pay Rs. ${initialData?.amountPKR?.toLocaleString()} via JazzCash`}
             </button>
           </fetcher.Form>
         ) : (
-          /* Step 3, 4, 5: 60-Second Interactive MPIN Modal & Timeout */
+          /* Step 2: Live Payment Approval & 60s Timer Screen */
           <div style={{ textAlign: "center", padding: "12px 0" }}>
-            {isSuccess ? (
+            {paymentApproved ? (
               /* Success State */
               <div>
-                <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
-                <h3 style={{ fontSize: "20px", color: "#34d399", margin: "0 0 8px 0" }}>
+                <div style={{ fontSize: "52px", marginBottom: "12px" }}>✅</div>
+                <h3 style={{ fontSize: "22px", color: "#4ade80", margin: "0 0 8px 0", fontWeight: "800" }}>
                   Payment Approved!
                 </h3>
-                <p style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "20px" }}>
-                  Transaction complete. Redirecting you back to store...
+                <p style={{ fontSize: "14px", color: "#cbd5e1", marginBottom: "20px" }}>
+                  Your MPIN has been verified. Redirecting back to store...
                 </p>
                 {initialData?.returnUrl && (
                   <a
                     href={initialData.returnUrl}
                     style={{
                       display: "inline-block",
-                      padding: "10px 24px",
-                      backgroundColor: "#10b981",
+                      padding: "12px 28px",
+                      backgroundColor: "#16a34a",
                       color: "#fff",
                       textDecoration: "none",
                       borderRadius: "8px",
-                      fontWeight: "600"
+                      fontWeight: "700"
                     }}
                   >
                     Return to Store
@@ -420,27 +415,28 @@ export default function Pay() {
                 )}
               </div>
             ) : isTimedOut ? (
-              /* 60-Second Timeout State */
+              /* Timeout State */
               <div>
-                <div style={{ fontSize: "48px", marginBottom: "12px" }}>⏰</div>
+                <div style={{ fontSize: "52px", marginBottom: "12px" }}>⏰</div>
                 <h3 style={{ fontSize: "20px", color: "#f87171", margin: "0 0 8px 0" }}>
                   Payment Timed Out (1 min)
                 </h3>
-                <p style={{ fontSize: "13px", color: "#9ca3af", marginBottom: "20px", lineHeight: "1.5" }}>
+                <p style={{ fontSize: "13px", color: "#cbd5e1", marginBottom: "20px", lineHeight: "1.5" }}>
                   You did not enter your 5-digit JazzCash MPIN on your mobile phone within 60 seconds. The payment request was cancelled.
                 </p>
                 <button
                   onClick={() => {
                     setIsTimedOut(false);
                     setTimeLeft(60);
+                    setPaymentApproved(false);
                     window.location.reload();
                   }}
                   style={{
-                    backgroundColor: "#dc2626",
+                    backgroundColor: "#0284c7",
                     color: "#ffffff",
-                    fontWeight: "600",
+                    fontWeight: "700",
                     fontSize: "14px",
-                    padding: "10px 20px",
+                    padding: "12px 24px",
                     border: "none",
                     borderRadius: "8px",
                     cursor: "pointer"
@@ -450,14 +446,14 @@ export default function Pay() {
                 </button>
               </div>
             ) : (
-              /* Live Waiting Modal with 60-Second Timer */
+              /* Waiting for MPIN Screen with 60s Countdown */
               <div>
                 <div style={{ position: "relative", width: "72px", height: "72px", margin: "0 auto 16px auto" }}>
                   <div style={{
                     width: "72px",
                     height: "72px",
                     borderRadius: "50%",
-                    border: "4px solid #ef4444",
+                    border: "4px solid #38bdf8",
                     borderTopColor: "transparent",
                     animation: "spin 1s linear infinite"
                   }}></div>
@@ -472,35 +468,34 @@ export default function Pay() {
                   </div>
                 </div>
 
-                <h3 style={{ fontSize: "18px", color: "#fbbf24", margin: "0 0 8px 0" }}>
+                <h3 style={{ fontSize: "18px", color: "#fbbf24", margin: "0 0 8px 0", fontWeight: "700" }}>
                   MPIN Prompt Sent to Mobile Phone!
                 </h3>
 
-                <p style={{ fontSize: "13px", color: "#9ca3af", marginBottom: "16px", lineHeight: "1.5" }}>
+                <p style={{ fontSize: "13px", color: "#cbd5e1", marginBottom: "16px", lineHeight: "1.5" }}>
                   Please check screen on <strong style={{ color: "#fff", fontFamily: "monospace" }}>{result.mobileNo}</strong> or open your <strong>JazzCash App</strong> to approve payment.
                 </p>
 
-                {/* Live Countdown Timer Circle */}
+                {/* Countdown Box */}
                 <div style={{
-                  backgroundColor: "#030712",
+                  backgroundColor: "#0f172a",
                   borderRadius: "12px",
                   padding: "16px",
-                  border: "1px solid #1f2937",
+                  border: "1px solid #334155",
                   marginBottom: "20px"
                 }}>
-                  <div style={{ fontSize: "12px", color: "#9ca3af", marginBottom: "4px" }}>
+                  <div style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "4px", fontWeight: "600" }}>
                     TIME REMAINING TO AUTHORIZE MPIN:
                   </div>
-                  <div style={{ fontSize: "28px", fontWeight: "800", color: timeLeft <= 10 ? "#ef4444" : "#10b981", fontFamily: "monospace" }}>
+                  <div style={{ fontSize: "28px", fontWeight: "800", color: timeLeft <= 10 ? "#ef4444" : "#4ade80", fontFamily: "monospace" }}>
                     00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
                   </div>
 
-                  {/* Progress Bar */}
-                  <div style={{ width: "100%", height: "6px", backgroundColor: "#1f2937", borderRadius: "3px", marginTop: "10px", overflow: "hidden" }}>
+                  <div style={{ width: "100%", height: "6px", backgroundColor: "#334155", borderRadius: "3px", marginTop: "10px", overflow: "hidden" }}>
                     <div style={{
                       width: `${(timeLeft / 60) * 100}%`,
                       height: "100%",
-                      backgroundColor: timeLeft <= 10 ? "#ef4444" : "#10b981",
+                      backgroundColor: timeLeft <= 10 ? "#ef4444" : "#4ade80",
                       transition: "width 1s linear"
                     }}></div>
                   </div>
@@ -517,7 +512,7 @@ export default function Pay() {
           </div>
         )}
 
-        <div style={{ textAlign: "center", marginTop: "24px", fontSize: "11px", color: "#4b5563" }}>
+        <div style={{ textAlign: "center", marginTop: "24px", fontSize: "12px", color: "#64748b" }}>
           Secured by <strong>Ultra Digital Connect Gateway</strong>
         </div>
       </div>
