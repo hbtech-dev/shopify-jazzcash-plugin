@@ -18,7 +18,7 @@ const formatPhoneNumber = (phone) => {
 
 const sanitizeStoreName = (name) => {
   if (!name) return "Store";
-  const sanitized = name.replace(/\.myshopify\.com$/, '').replace(/[^a-zA-Z]/g, '');
+  const sanitized = name.replace(/\.myshopify\.com$/, '').replace(/[^a-zA-Z0-9_-]/g, '');
   return sanitized || "Store";
 };
 
@@ -33,7 +33,7 @@ export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const orderId = url.searchParams.get("order_id");
   const shop = url.searchParams.get("shop") || url.hostname;
-  const merchantId = url.searchParams.get("merchant_id");
+  const merchantId = url.searchParams.get("merchant_id") || url.searchParams.get("sub_merchant");
   const amountParam = url.searchParams.get("amount");
   const returnUrl = url.searchParams.get("return_url");
 
@@ -47,7 +47,7 @@ export const loader = async ({ request }) => {
       orderName: orderId ? `Order #${orderId}` : `Order #${Date.now().toString().slice(-6)}`,
       amountPKR: parseFloat(amountParam || "100.00"),
       customerPhone: formatPhoneNumber(url.searchParams.get("mobile") || ""),
-      storeName: merchantId || "WooCommerce Store",
+      storeName: merchantId || "Zoyas",
       shop: shop,
       returnUrl: returnUrl || "",
     };
@@ -113,7 +113,7 @@ export const loader = async ({ request }) => {
       }
     }
 
-    const storeCode = sanitizeStoreName(session?.shop || shop);
+    const storeCode = merchantId ? merchantId : sanitizeStoreName(session?.shop || shop);
     const amountPKR = order ? parseFloat(order.totalPriceSet?.shopMoney?.amount || "0") : (parseFloat(amountParam || "100.00"));
     const customerPhone = order ? formatPhoneNumber(order.phone || order.customer?.phone || "") : formatPhoneNumber(url.searchParams.get("mobile") || "");
     const orderName = order ? order.name : `Order #${orderId?.slice(-6)}`;
@@ -134,7 +134,7 @@ export const loader = async ({ request }) => {
       orderName: `Order #${orderId?.slice(-6) || "1001"}`,
       amountPKR: parseFloat(amountParam || "100.00"),
       customerPhone: "",
-      storeName: "Sub-Merchant Store",
+      storeName: merchantId || "Zoyas",
       shop: shop,
       returnUrl: returnUrl || "",
     };
@@ -145,6 +145,7 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
   const orderId = formData.get("orderId");
   const shop = formData.get("shop");
+  const merchantId = formData.get("merchantId") || formData.get("storeName");
   const mobileNo = formatPhoneNumber(formData.get("mobileNo") || "");
   const returnUrl = formData.get("returnUrl");
 
@@ -153,17 +154,21 @@ export const action = async ({ request }) => {
   }
 
   try {
-    const storeCode = sanitizeStoreName(shop);
+    const storeCode = merchantId ? merchantId : sanitizeStoreName(shop);
     const amountPKR = parseFloat(formData.get("amountPKR") || "0");
     const orderName = formData.get("orderName") || "Order";
 
-    // Call Central Gateway API
+    // Forward to Central Gateway API
     const gatewayUrl = "https://api.ultradigital.cc/api/payment";
     const gatewayPayload = {
+      merchantId: storeCode,
       subMerchantName: storeCode,
       amountPKR: amountPKR,
+      amount: amountPKR,
       mobileNo: mobileNo,
+      mobileNumber: mobileNo,
       billRef: orderName,
+      billReference: orderName,
       description: `Order ${orderName} at ${storeCode}`,
       returnUrl: returnUrl || `https://api.ultradigital.cc/api/result`
     };
@@ -199,13 +204,12 @@ export default function Pay() {
   const [phoneError, setPhoneError] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
   const [isTimedOut, setIsTimedOut] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState("IDLE"); // IDLE | PENDING | PAID | DECLINED
+  const [paymentStatus, setPaymentStatus] = useState("IDLE");
 
   const result = fetcher.data;
   const isSubmitted = fetcher.state === "submitting" || !!result;
   const res = result?.gatewayResponse || {};
 
-  // Update Status on Action Submission Response
   useEffect(() => {
     if (result && result.success) {
       const code = String(res.pp_ResponseCode || res.responseCode || "");
@@ -221,7 +225,6 @@ export default function Pay() {
     }
   }, [result, res]);
 
-  // 60-Second Countdown Timer Effect for PENDING state
   useEffect(() => {
     let timer;
     if (paymentStatus === "PENDING" && timeLeft > 0 && !isTimedOut) {
@@ -240,7 +243,6 @@ export default function Pay() {
     return () => clearInterval(timer);
   }, [paymentStatus, timeLeft, isTimedOut]);
 
-  // Redirect to Return URL when Payment Completes
   useEffect(() => {
     if (paymentStatus === "PAID" && initialData?.returnUrl) {
       const redirectTimer = setTimeout(() => {
@@ -253,7 +255,6 @@ export default function Pay() {
     }
   }, [paymentStatus, initialData?.returnUrl, initialData?.orderName, res?.txnRefNo]);
 
-  // Handle Form Submit
   const handleSubmit = (e) => {
     if (!isValidPakistaniMobile(mobileInput)) {
       e.preventDefault();
@@ -298,7 +299,7 @@ export default function Pay() {
         position: "relative",
         boxSizing: "border-box"
       }}>
-        {/* Header - Matching www.ultradigital.cc Branding */}
+        {/* Header */}
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
           <div style={{
             display: "inline-flex",
@@ -350,10 +351,10 @@ export default function Pay() {
         </div>
 
         {paymentStatus === "IDLE" && (
-          /* Mobile Input Form with www.ultradigital.cc Start Integration Button Style */
           <fetcher.Form method="post" onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
             <input type="hidden" name="orderId" value={initialData.orderId} />
             <input type="hidden" name="shop" value={initialData.shop} />
+            <input type="hidden" name="merchantId" value={initialData.storeName} />
             <input type="hidden" name="orderName" value={initialData.orderName} />
             <input type="hidden" name="amountPKR" value={initialData.amountPKR} />
             <input type="hidden" name="returnUrl" value={initialData.returnUrl} />
@@ -435,7 +436,6 @@ export default function Pay() {
         )}
 
         {paymentStatus === "PENDING" && (
-          /* Live 60s Waiting Screen for MPIN */
           <div style={{ textAlign: "center", padding: "12px 0" }}>
             <div style={{ position: "relative", width: "72px", height: "72px", margin: "0 auto 16px auto" }}>
               <div style={{
@@ -513,7 +513,6 @@ export default function Pay() {
         )}
 
         {paymentStatus === "PAID" && (
-          /* Success Screen */
           <div style={{ textAlign: "center", padding: "16px 0" }}>
             <div style={{ fontSize: "52px", marginBottom: "12px" }}>✅</div>
             <h3 style={{ fontSize: "22px", color: "#c0ec00", margin: "0 0 8px 0", fontWeight: "800" }}>
@@ -542,7 +541,6 @@ export default function Pay() {
         )}
 
         {paymentStatus === "DECLINED" && (
-          /* Declined Screen */
           <div style={{ textAlign: "center", padding: "16px 0" }}>
             <div style={{ fontSize: "52px", marginBottom: "12px" }}>❌</div>
             <h3 style={{ fontSize: "20px", color: "#f87171", margin: "0 0 8px 0", fontWeight: "800" }}>
